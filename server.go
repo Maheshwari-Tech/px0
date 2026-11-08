@@ -280,6 +280,32 @@ func (s *Server) scavenge() {
 
 const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: http:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none';"
 
+// frameAncestors replaces `frame-ancestors 'none'` when px0 is embedded by a
+// trusted host page (for example the CodeGraph dashboard). Empty keeps the default.
+var frameAncestors string
+
+var frameAncestorRe = regexp.MustCompile(`^(https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?|'self')$`)
+
+// setFrameAncestors validates and stores the origins allowed to embed px0.
+func setFrameAncestors(value string) error {
+	origins := strings.Fields(value)
+	for _, origin := range origins {
+		if !frameAncestorRe.MatchString(origin) {
+			return fmt.Errorf("invalid -frame-ancestors origin %q (want 'self' or http(s)://host[:port])", origin)
+		}
+	}
+	frameAncestors = strings.Join(origins, " ")
+	return nil
+}
+
+// cspHeader is the Content-Security-Policy sent with every response.
+func cspHeader() string {
+	if frameAncestors == "" {
+		return contentSecurityPolicy
+	}
+	return strings.Replace(contentSecurityPolicy, "frame-ancestors 'none'", "frame-ancestors "+frameAncestors, 1)
+}
+
 // ServeHTTP delegates incoming HTTP requests to the configured ServeMux,
 // recording request timing and updating access timestamps.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -322,7 +348,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var out http.ResponseWriter = rec
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+	w.Header().Set("Content-Security-Policy", cspHeader())
 	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") && !isSSE {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")

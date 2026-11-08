@@ -56,6 +56,7 @@ func main() {
 		_            = flag.Bool("y", false, "answer yes to prompts (deprecated; PRs are always opened without prompt)")
 		_            = flag.Bool("yes", false, "answer yes to prompts (alias for -y)")
 		basePathFlag = flag.String("base-path", "", "base URL path prefix to serve endpoints and assets from (e.g. /rev-123/)")
+		frameAncest  = flag.String("frame-ancestors", "", "space-separated origins allowed to embed px0 in an iframe (e.g. \"http://localhost:5190\"); embedding is blocked when empty")
 		wbChild      = flag.Bool("workbench-child", false, "internal: run as a workspace of the px0 workbench")
 	)
 	flag.Usage = func() {
@@ -63,6 +64,13 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	if *frameAncest != "" {
+		if err := setFrameAncestors(*frameAncest); err != nil {
+			fmt.Fprintf(os.Stderr, "px0: %v\n", err)
+			os.Exit(2)
+		}
+	}
 
 	if *noColor {
 		f := false
